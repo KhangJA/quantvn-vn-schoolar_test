@@ -47,7 +47,11 @@ class Config:
     def get_link(cls) -> str:
         """Return the API base URL."""
         return "https://d207hp2u5nyjgn.cloudfront.net"
-
+    
+    @classmethod
+    def get_link_stock_url(cls) -> str:
+        """Return the API base URL for stock data."""
+        return "https://be-stock.quantvn.com"
 
 def client(apikey: str):
     """

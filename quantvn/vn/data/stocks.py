@@ -51,6 +51,7 @@ _MAX_REQUESTS = 2000  # giới hạn an toàn số lần phân trang
 
 # Giữ cho API cũ list_liquid_asset (nếu bạn dùng ở nơi khác)
 LAMBDA_URL = Config.get_link()
+STOCK_URL = Config.get_link_stock_url()
 
 
 def _backend_headers() -> Dict[str, str]:
@@ -1985,51 +1986,6 @@ def _chart_yahoo(
     return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
 
-def _chart_dukascopy(symbol: str, start=None, end=None, interval="1d"):
-
-    api_key = Config.get_api_key()
-
-    interval = interval.lower().strip()
-
-    if interval not in ["1m", "3m", "5m", "15m", "30m", "1h", "1d"]:
-        return None
-
-    parameters = {"instrument": symbol.lower().strip(), "timeframe": interval}
-
-    start = pd.to_datetime(start)
-    parameters["from_date"] = start
-
-    end = pd.to_datetime(end)
-    parameters["to_date"] = end
-
-    headers = {
-        "x-api-key": api_key,
-        "Accept-Encoding": "gzip",
-        "Accept": "application/octet-stream",
-    }
-
-    for attempt in range(3):
-        response = requests.get(
-            f"{LAMBDA_URL}/dukascopy/candles",
-            params=parameters,
-            headers=headers,
-        )
-
-        if response.status_code == 200:
-            buffer = io.BytesIO(response.content)
-            df = pd.read_parquet(buffer)
-            df.index = pd.to_datetime(df["timestamp"], unit="ms")
-            df = df.drop(columns=["timestamp"])
-            df.index.name = "time"
-            df = df.reset_index()
-
-            return df
-        elif 400 <= response.status_code < 500:
-            break
-
-    return None
-
-
 class _Wrap:
     def __init__(self, id_map, kind: str):
         self.id_map = id_map
@@ -2043,15 +1999,11 @@ class _Wrap:
 
         def history(self, start, end, interval="1D"):
             try:
-                df = _chart_dukascopy(self.raw_symbol, start, end, interval)
-                if df is not None and not df.empty:
-                    return df
-
                 df = _chart_msn(self.sid, start, end, interval)
                 if df is not None and not df.empty:
                     return df
             except Exception:
-                raise Exception
+                pass
             return _chart_yahoo(self.kind, self.raw_symbol, start, end, interval)
 
     def __call__(self, symbol):
@@ -2199,86 +2151,49 @@ class Trading:
         return Trading._fallback(symbols)
 
 
-# ===================== Public: get_hist =====================
-
-
-def get_hist(asset_name: str, resolution: str = "1H") -> pd.DataFrame:
+def get_hist(symbol: str, resolution: str = "1H"):
     """
-    Lấy toàn bộ OHLCV từ Entrade API với pivot/fill logic để xử lý missing data.
+    Get historical data of derivatives BTCUSDT.
 
-    Parameters:
-    -----------
-    asset_name : str
-        Mã cổ phiếu (ví dụ: "HPG", "VNM")
+    Parameters
+    ----------
+    symbol : str
+        Only supports FPT (case-insensitive).
     resolution : str
-        Khung thời gian: chỉ hỗ trợ "1H" (bắt buộc).
-        Mặc định: "1H"
-
-    Returns:
-    --------
-    DataFrame với columns: ["Date", "time", "Open", "High", "Low", "Close", "volume"]
+        Timeframe to get data. Supported: "15m", "1h".
+    Returns
+    -------
+    pd.DataFrame
+        Historical data with OHLCV.
+    Raises
+    ------
+    Exception
+        If there is an error when calling the API.
     """
-    if not isinstance(asset_name, str) or not asset_name.strip():
-        raise ValueError("asset_name phải là chuỗi hợp lệ (ví dụ: 'HPG').")
+    sym = str(symbol).upper().strip()
 
-    # Map resolution to Entrade format
+    # Map alias người dùng → chuẩn API
     res_map = {
-        "m": "1",  # 1 minute
-        "h": "1H",  # 1 hour
-        "1h": "1H",
-        "1d": "1D",
-        "d": "1D",
+        "15m": "15m",
+        "h": "1h",
+        "1h": "1h",
     }
-    res = res_map.get((resolution or "m").lower(), resolution)
-    symbol = asset_name.strip().upper()
+    freq = str(resolution or "").lower()
+    interval_mapped = res_map.get(freq)
+    if not interval_mapped:
+        raise ValueError("resolution must be one of: '15m', '1h'.")
 
-    # Lấy raw data từ Entrade (1 request)
-    df = _fetch_entrade_data(symbol, res)
+    api_key = Config.get_api_key()
+    payload = {"symbol": sym, "interval": interval_mapped}
 
-    if df.empty:
-        return pd.DataFrame(
-            columns=["Date", "time", "Open", "High", "Low", "Close", "volume"]
-        )
-
-    # Convert timestamp sang datetime UTC+7 (Vietnam timezone)
-    df["t"] = (
-        df["t"]
-        .astype(int)
-        .apply(lambda x: dt.datetime.utcfromtimestamp(x) + dt.timedelta(hours=7))
+    response = requests.post(
+        f"{STOCK_URL}/stock/historical",
+        json=payload,
+        headers={"x-api-key": api_key},
     )
 
-    # Đổi tên columns
-    df.columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
-
-    # Tách Date và time
-    df["time"] = df["Date"].astype(str).str[11:]  # HH:MM:SS
-    df["Date"] = df["Date"].astype(str).str[:10]  # YYYY-MM-DD
-
-    # Pivot Close theo Date x time để fill missing data
-    close_pivot = df.pivot(index="Date", columns="time", values="Close")
-    close_pivot = close_pivot.dropna(axis=1, thresh=len(close_pivot) - 30)
-    close_pivot = close_pivot.ffill(axis=1)
-    close_stacked = close_pivot.stack().reset_index()
-    close_stacked.columns = ["Date", "time", "Close"]
-
-    # Pivot Volume theo Date x time
-    volume_pivot = df.pivot(index="Date", columns="time", values="Volume")
-    volume_pivot = volume_pivot.dropna(axis=1, thresh=len(volume_pivot) - 30)
-    volume_pivot = volume_pivot.ffill(axis=1)
-    volume_stacked = volume_pivot.stack().reset_index()
-
-    # Merge Close và Volume
-    close_stacked["volume"] = volume_stacked.iloc[:, 2]
-
-    # Merge với Open, High, Low từ data gốc
-    merged = pd.merge(
-        close_stacked[["Date", "time", "Close", "volume"]],
-        df[["Date", "time", "Open", "High", "Low"]],
-        on=["Date", "time"],
-        how="left",
-    )
-
-    # Sắp xếp và forward fill các giá trị còn thiếu
-    ohlc = merged[["Date", "time", "Open", "High", "Low", "Close", "volume"]].ffill()
-
-    return ohlc
+    if response.status_code == 200:
+        df = pd.read_parquet(io.BytesIO(response.content))
+        return df
+    else:
+        raise Exception(f"Error: {response.status_code}, {response.text}")

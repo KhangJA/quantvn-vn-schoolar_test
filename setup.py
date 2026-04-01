@@ -2,18 +2,19 @@ from setuptools import find_packages, setup
 
 setup(
     name="quantvn",
-    version="0.1.14",
+    version="0.1.17",
     packages=find_packages(),
     install_requires=[
         "requests",
         "pandas",
         "matplotlib",
         "tqdm",
-        "ta"
+        "ta",
+        "pyarrow"
     ],
     author="quantvn",
     description="QuantVN API Library for Financial Data Analysis",
-    # long_description=open("README.md", encoding="utf-8").read(),
+    long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     classifiers=[
         "Development Status :: 3 - Alpha",

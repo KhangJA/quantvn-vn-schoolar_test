@@ -44,6 +44,17 @@ class Backtest_Derivates:
         self.df = self.df.dropna(subset=["datetime"])
         self.df.set_index("datetime", inplace=True)
         self.df.sort_index(inplace=True)
+        
+        # Fill 14:31–14:45 with the latest position ≤ 14:30 (per day)
+        t_1430 = pd.to_datetime("14:30").time()
+        t_1445 = pd.to_datetime("14:45").time()
+        time_index = self.df.index.time
+        date_index = self.df.index.date
+        mask_before = time_index <= t_1430
+        pos = self.df["position"].where(mask_before)
+        pos_filled = pos.groupby(date_index).ffill()
+        mask_fill = (time_index > t_1430) & (time_index <= t_1445)
+        self.df.loc[mask_fill, "position"] = pos_filled[mask_fill]
 
         # Calculate raw PNL
         self.df["pnl_raw"] = self.df["Close"].diff().shift(-1) * self.df["position"]
@@ -192,6 +203,17 @@ class Backtest_Stock:
         self.df = self.df.dropna(subset=["datetime"])
         self.df.set_index("datetime", inplace=True)
         self.df.sort_index(inplace=True)
+        
+        # Fill 14:31–14:45 with the latest position ≤ 14:30 (per day)
+        t_1430 = pd.to_datetime("14:30").time()
+        t_1445 = pd.to_datetime("14:45").time()
+        time_index = self.df.index.time
+        date_index = self.df.index.date
+        mask_before = time_index <= t_1430
+        pos = self.df["position"].where(mask_before)
+        pos_filled = pos.groupby(date_index).ffill()
+        mask_fill = (time_index > t_1430) & (time_index <= t_1445)
+        self.df.loc[mask_fill, "position"] = pos_filled[mask_fill]
 
         # Long-only ý định
         self.df["Close"] = pd.to_numeric(self.df["Close"], errors="coerce")

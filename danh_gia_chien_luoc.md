@@ -56,7 +56,7 @@
 ## Đề xuất cải thiện
 + Tìm hiểu thêm về các phương pháp tối ưu làm **giảm nhiễu tín hiệu** cho những khung h nhỏ hơn như **M1**.
 + Hoặc có thể tập trung tối ưu chiến lược cho khung thời gian lớn hơn như **M15** hay **H1**, và giảm được **Max Drawdown** xuống thấp nữa.
-- Có thể tìm hiểu thêm về những logic để set **TP/SL** và tỉ lệ R:R phù hợp để tối ưu được lợi nhuận.
++ Có thể tìm hiểu thêm về những logic để set **TP/SL** và tỉ lệ R:R phù hợp để tối ưu được lợi nhuận.
 + Thêm các điều kiện để bot không bị quá **overtrade** ở các khung nhỏ hơn 
 + Nếu có đủ thời gian có thể tìm hiểu thêm về các mô hình **AI/ML** để giúp cải thiện hiệu suất lên cao nếu có một chiến lược hoàn chỉnh cần thay đổi tham số nhiều.
 + Chỉnh sửa lại việc đóng lệnh khi hết khung h hành chính, tránh việc bot giữ lệnh qua các ngày khác.
